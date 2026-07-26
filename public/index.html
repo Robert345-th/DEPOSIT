@@ -67,7 +67,19 @@
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
   .dropzone.drag { transform: translateY(2px); box-shadow: 0 4px 0 -2px rgba(221,107,18,0.35); background: #ece2cc; }
-  .dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 4px; color: var(--pending); }
+  .dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 14px; color: var(--pending); }
+  .upload-btns { display: flex; flex-direction: column; gap: 10px; }
+  .upload-btns button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 13px 14px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+  }
+  #cameraBtn { background: var(--pending); color: var(--ink); }
+  #galleryBtn { background: transparent; border: 1.5px solid var(--pending); color: var(--pending); }
 
   .status { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; min-height: 18px; }
   .status.ok { color: #f0a662; }
@@ -190,9 +202,13 @@
 <main>
   <div class="dropzone" id="dropzone">
     <span class="big">＋ Add receipt</span>
-    Click or drag a photo here
+    <div class="upload-btns">
+      <button type="button" id="cameraBtn">📷 Take photo</button>
+      <button type="button" id="galleryBtn">🖼 Choose from gallery</button>
+    </div>
   </div>
-  <input type="file" id="fileInput" accept="image/*" capture="environment">
+  <input type="file" id="cameraInput" accept="image/*" capture="environment">
+  <input type="file" id="galleryInput" accept="image/*">
   <div class="status" id="status"></div>
 
   <section>
@@ -213,10 +229,15 @@
 
 <script>
 const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
+const cameraBtn = document.getElementById('cameraBtn');
+const galleryBtn = document.getElementById('galleryBtn');
+const cameraInput = document.getElementById('cameraInput');
+const galleryInput = document.getElementById('galleryInput');
 const statusEl = document.getElementById('status');
 
-dropzone.addEventListener('click', () => fileInput.click());
+cameraBtn.addEventListener('click', () => cameraInput.click());
+galleryBtn.addEventListener('click', () => galleryInput.click());
+
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
 dropzone.addEventListener('drop', (e) => {
@@ -224,8 +245,11 @@ dropzone.addEventListener('drop', (e) => {
   dropzone.classList.remove('drag');
   if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
 });
-fileInput.addEventListener('change', () => {
-  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+cameraInput.addEventListener('change', () => {
+  if (cameraInput.files.length) uploadFile(cameraInput.files[0]);
+});
+galleryInput.addEventListener('change', () => {
+  if (galleryInput.files.length) uploadFile(galleryInput.files[0]);
 });
 
 async function uploadFile(file) {
@@ -247,7 +271,8 @@ async function uploadFile(file) {
   } catch (err) {
     setStatus('Upload failed: ' + err.message, 'err');
   }
-  fileInput.value = '';
+  cameraInput.value = '';
+  galleryInput.value = '';
 }
 
 function setStatus(msg, cls) {
