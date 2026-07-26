@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Deposit OCR</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 16px; background: #f4f4f4; }
+  h1 { font-size: 20px; }
+  .dropbox { border: 2px dashed #888; border-radius: 8px; padding: 30px; text-align: center; background: #fff; cursor: pointer; }
+  .dropbox.drag { background: #eef; border-color: #33f; }
+  .status { margin-top: 12px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; font-size: 13px; text-align: left; }
+  h2 { font-size: 16px; margin-top: 30px; }
+  .err { color: #b00; }
+  .ok { color: #070; }
+</style>
+</head>
+<body>
+
+<h1>Deposit Box &mdash; drop a receipt photo</h1>
+<div class="dropbox" id="dropbox">
+  <p>Click or drag a receipt photo here</p>
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+</div>
+<div class="status" id="status"></div>
+
+<h2>Pending (Deposit box)</h2>
+<table id="pendingTable">
+  <thead><tr><th>ID</th><th>Customer ID</th><th>Code</th><th>Added</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h2>Deposited</h2>
+<table id="depositedTable">
+  <thead><tr><th>ID</th><th>Customer ID</th><th>Code</th><th>Claimed</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<script>
+const dropbox = document.getElementById('dropbox');
+const fileInput = document.getElementById('fileInput');
+const statusEl = document.getElementById('status');
+
+dropbox.addEventListener('click', () => fileInput.click());
+dropbox.addEventListener('dragover', (e) => { e.preventDefault(); dropbox.classList.add('drag'); });
+dropbox.addEventListener('dragleave', () => dropbox.classList.remove('drag'));
+dropbox.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropbox.classList.remove('drag');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  statusEl.textContent = 'Scanning...';
+  statusEl.className = 'status';
+  const form = new FormData();
+  form.append('receipt', file);
+  try {
+    const res = await fetch('/deposit/scan', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.textContent = 'Error: ' + (data.error || 'scan failed') +
+        (data.customer_id || data.code ? ` (got ID: ${data.customer_id}, Code: ${data.code})` : '');
+      statusEl.className = 'status err';
+    } else {
+      statusEl.textContent = `Saved: Customer ID ${data.customer_id}, Code ${data.code}`;
+      statusEl.className = 'status ok';
+      refresh();
+    }
+  } catch (err) {
+    statusEl.textContent = 'Upload failed: ' + err.message;
+    statusEl.className = 'status err';
+  }
+}
+
+async function refresh() {
+  const pending = await (await fetch('/deposit/pending')).json();
+  const deposited = await (await fetch('/deposit/deposited')).json();
+
+  const pBody = document.querySelector('#pendingTable tbody');
+  pBody.innerHTML = pending.map(r =>
+    `<tr><td>${r.id}</td><td>${r.customer_id}</td><td>${r.code}</td><td>${new Date(r.created_at).toLocaleString()}</td></tr>`
+  ).join('');
+
+  const dBody = document.querySelector('#depositedTable tbody');
+  dBody.innerHTML = deposited.map(r =>
+    `<tr><td>${r.id}</td><td>${r.customer_id}</td><td>${r.code}</td><td>${new Date(r.deposited_at).toLocaleString()}</td></tr>`
+  ).join('');
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
