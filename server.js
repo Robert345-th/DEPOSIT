@@ -34,15 +34,9 @@ app.post('/deposit/scan', upload.single('receipt'), async (req, res) => {
 
     const { customer_id, code, raw_text } = await extractFromImage(req.file.buffer);
 
-    if (!customer_id || !code) {
-      return res.status(422).json({
-        error: 'Could not read Customer ID and/or Code from this image',
-        customer_id,
-        code,
-        raw_text
-      });
-    }
-
+    // Even if OCR couldn't read one or both fields, save it as pending so
+    // the photo isn't lost -- fill in the blanks with Edit instead of
+    // having to retake the photo from scratch.
     const result = await pool.query(
       `INSERT INTO deposits (customer_id, code, status, raw_text)
        VALUES ($1, $2, 'pending', $3)
@@ -50,7 +44,7 @@ app.post('/deposit/scan', upload.single('receipt'), async (req, res) => {
       [customer_id, code, raw_text]
     );
 
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], needs_review: !customer_id || !code });
   } catch (err) {
     console.error('scan error:', err);
     res.status(500).json({ error: 'Scan failed' });
