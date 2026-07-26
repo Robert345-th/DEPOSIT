@@ -34,11 +34,8 @@ the Deposited box, so it can never be reused.
 | GET    | `/deposit/lookup?customer_id=X` | Returns the code for that ID once, marks it deposited |
 | GET    | `/deposit/pending`             | List pending (Deposit box) entries |
 | GET    | `/deposit/deposited`           | List deposited entries |
-| GET    | `/deposit/bin`                 | List removed entries (soft-deleted, recoverable) |
 | PATCH  | `/deposit/:id`                 | Manually fix a misread `customer_id` or `code` while still pending |
-| DELETE | `/deposit/:id`                 | Move a pending entry to the Bin (not a hard delete) |
-| POST   | `/deposit/:id/restore`         | Move a binned entry back to Pending |
-| DELETE | `/deposit/:id/permanent`       | Permanently delete a binned entry |
+| DELETE | `/deposit/:id`                 | Remove a bad pending scan |
 
 ## Tampermonkey side
 
@@ -51,9 +48,18 @@ Edit `tampermonkey-example.js`:
 ## A note on accuracy
 
 OCR on phone photos of thermal receipts isn't perfect — characters like
-`8`/`B` and `6`/`G` can get misread, especially on curved paper or with
-glare/clutter in the frame. Tested against your sample receipt: the
-Customer ID read perfectly every time; the Code occasionally needs a manual
-fix via the `PATCH` endpoint (or a UI button for it, if you want me to add
-one). Flatter, well-lit, uncluttered photos of just the receipt will
-reduce errors a lot.
+`8`/`B` and `6`/`E` can get misread, especially on curved paper or with
+glare/clutter in the frame. The scan does two passes: first it reads the
+whole photo (reliable for the Customer ID), then it locates the Code value
+by *position* (the value sitting right below the Customer ID -- not by
+trying to read the word "Code" itself, since that label is often garbled
+too) and re-reads just that small region zoomed in, as a single word.
+
+Tested against real receipts: this consistently produces a Code guess of
+the *correct length*, usually off by only one character (typically an
+8-vs-B mix-up) rather than the wrong length entirely. On a blurry or
+poorly-lit photo, even the Customer ID digits can come out wrong -- that's
+a real limit of the photo itself, not something the algorithm can reason
+around. Tap **Edit** on any pending ticket to fix a misread character in
+seconds. Flatter, well-lit, uncluttered photos of just the receipt still
+give the most reliable reads.
