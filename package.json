@@ -1,0 +1,16 @@
+{
+  "name": "deposit-ocr-app",
+  "version": "1.0.0",
+  "description": "Scans deposit receipt photos, extracts Customer ID + Code, and serves a pending-to-deposited claim queue for a Tampermonkey client.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.0",
+    "pg": "^8.11.5",
+    "tesseract.js": "^5.1.0",
+    "cors": "^2.8.5"
+  }
+}
