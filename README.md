@@ -13,8 +13,17 @@ the Deposited box, so it can never be reused.
 - `db.js` — Postgres connection + table setup (own database, separate from
   your other pool servers — do NOT point this at the shared pool1-4 schema)
 - `ocr.js` — Tesseract OCR + regex extraction of Customer ID / Code only
-- `public/index.html` — the drop box UI + live pending/deposited lists
+- `public/index.html` — the ticket-styled drop box UI + live pending/claimed lists
+- `public/manifest.json`, `public/sw.js`, `public/icons/` — PWA install support
 - `tampermonkey-example.js` — starter userscript that calls `/deposit/lookup`
+
+## Installing as an app (PWA)
+
+Once deployed, open the Railway URL on your phone in Chrome:
+- Tap the browser menu → **Add to Home screen** / **Install app**
+- It installs with its own icon and launches full-screen, no browser chrome
+
+This works because `manifest.json` + `sw.js` are already wired into `index.html`.
 
 ## Deploy to Railway
 
@@ -49,8 +58,10 @@ Edit `tampermonkey-example.js`:
 
 OCR on phone photos of thermal receipts isn't perfect — characters like
 `8`/`B` and `6`/`G` can get misread, especially on curved paper or with
-glare/clutter in the frame. Tested against your sample receipt: the
-Customer ID read perfectly every time; the Code occasionally needs a manual
-fix via the `PATCH` endpoint (or a UI button for it, if you want me to add
-one). Flatter, well-lit, uncluttered photos of just the receipt will
-reduce errors a lot.
+glare/clutter in the frame. I tested several image preprocessing strategies
+against a real sample receipt (contrast boost, upscaling, normalization) —
+counterintuitively, they made accuracy *worse* on blurry/curved shots, so
+the pipeline uses light grayscale-only cleanup. Customer ID reads reliably;
+the Code occasionally needs a manual fix, which you can now do right in the
+UI — tap **Edit** on any pending ticket. Flatter, well-lit, uncluttered
+photos of just the receipt will still reduce errors the most.
