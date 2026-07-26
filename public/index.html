@@ -17,9 +17,10 @@
     --ink-soft: #2b2721;
     --paper: #f3ece0;
     --paper-dim: #e6dcc6;
-    --rule: #cbbfa0;
-    --pending: #9c6b12;
+    --rule: #d9a869;
+    --pending: #dd6b12;
     --claimed: #2f3a5c;
+    --binned: #8a5a3a;
     --danger: #7a2e2e;
   }
   * { box-sizing: border-box; }
@@ -42,6 +43,7 @@
     letter-spacing: 0.14em;
     margin: 0;
     text-transform: uppercase;
+    color: var(--pending);
   }
   header p {
     margin: 6px 0 0;
@@ -53,7 +55,7 @@
   .dropzone {
     background: var(--paper);
     color: var(--ink);
-    border: 2px dashed #9a8c68;
+    border: 2px dashed var(--pending);
     border-radius: 10px;
     padding: 36px 20px;
     text-align: center;
@@ -61,14 +63,14 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     letter-spacing: 0.03em;
-    box-shadow: 0 8px 0 -2px rgba(0,0,0,0.25);
+    box-shadow: 0 8px 0 -2px rgba(221,107,18,0.35);
     transition: transform 0.12s ease, box-shadow 0.12s ease;
   }
-  .dropzone.drag { transform: translateY(2px); box-shadow: 0 4px 0 -2px rgba(0,0,0,0.25); background: #ece2cc; }
-  .dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 4px; }
+  .dropzone.drag { transform: translateY(2px); box-shadow: 0 4px 0 -2px rgba(221,107,18,0.35); background: #ece2cc; }
+  .dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 4px; color: var(--pending); }
 
   .status { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; min-height: 18px; }
-  .status.ok { color: #d7c88e; }
+  .status.ok { color: #f0a662; }
   .status.err { color: #e39a9a; }
   .status.busy { color: #b8ae9a; }
 
@@ -131,6 +133,10 @@
   }
   .stamp.pending { color: var(--pending); }
   .stamp.claimed { color: var(--claimed); }
+  .stamp.binned { color: var(--binned); }
+
+  .ticket.in-bin { opacity: 0.82; }
+  .ticket.in-bin .code { text-decoration: line-through; text-decoration-color: var(--binned); }
 
   .ticket-actions { display: flex; gap: 8px; margin-top: 12px; }
   .ticket-actions button {
@@ -166,8 +172,10 @@
     border: none;
     cursor: pointer;
   }
-  .edit-form .save { background: var(--ink); color: var(--paper); }
+  .edit-form .save { background: var(--pending); color: var(--ink); }
   .edit-form .cancel { background: transparent; border: 1px solid #b8ac8c; color: #55503f; }
+
+  .ticket-actions button.restore { border-color: var(--pending); color: var(--pending); }
 
   input[type=file] { display: none; }
 </style>
@@ -195,6 +203,11 @@
   <section>
     <h2>Claimed</h2>
     <div id="claimedList"></div>
+  </section>
+
+  <section>
+    <h2>Bin</h2>
+    <div id="binList"></div>
   </section>
 </main>
 
@@ -259,7 +272,7 @@ function pendingTicketHtml(r) {
       </div>
       <div class="ticket-actions">
         <button onclick="toggleEdit(${r.id})">Edit</button>
-        <button class="danger" onclick="removeTicket(${r.id})">Remove</button>
+        <button class="danger" onclick="removeTicket(${r.id})">Move to bin</button>
       </div>
       <div class="edit-form" id="edit-${r.id}">
         <label>Customer ID</label>
@@ -290,6 +303,25 @@ function claimedTicketHtml(r) {
   `;
 }
 
+function binTicketHtml(r) {
+  return `
+    <div class="ticket in-bin" data-id="${r.id}">
+      <div class="ticket-row">
+        <div class="ticket-data">
+          <div class="id">ID ${r.customer_id}</div>
+          <div class="code">${r.code}</div>
+          <div class="time">${fmtTime(r.removed_at)}</div>
+        </div>
+        <div class="stamp binned">Removed</div>
+      </div>
+      <div class="ticket-actions">
+        <button class="restore" onclick="restoreTicket(${r.id})">Restore</button>
+        <button class="danger" onclick="deleteForever(${r.id})">Delete forever</button>
+      </div>
+    </div>
+  `;
+}
+
 function toggleEdit(id) {
   document.getElementById('edit-' + id).classList.toggle('open');
 }
@@ -310,9 +342,20 @@ async function removeTicket(id) {
   refresh();
 }
 
+async function restoreTicket(id) {
+  await fetch('/deposit/' + id + '/restore', { method: 'POST' });
+  refresh();
+}
+
+async function deleteForever(id) {
+  await fetch('/deposit/' + id + '/permanent', { method: 'DELETE' });
+  refresh();
+}
+
 async function refresh() {
   const pending = await (await fetch('/deposit/pending')).json();
   const claimed = await (await fetch('/deposit/deposited')).json();
+  const binned = await (await fetch('/deposit/bin')).json();
 
   document.getElementById('pendingList').innerHTML = pending.length
     ? pending.map(pendingTicketHtml).join('')
@@ -321,6 +364,10 @@ async function refresh() {
   document.getElementById('claimedList').innerHTML = claimed.length
     ? claimed.map(claimedTicketHtml).join('')
     : '<div class="empty">Nothing claimed yet.</div>';
+
+  document.getElementById('binList').innerHTML = binned.length
+    ? binned.map(binTicketHtml).join('')
+    : '<div class="empty">Bin is empty.</div>';
 }
 
 refresh();
