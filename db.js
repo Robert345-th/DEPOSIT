@@ -21,12 +21,17 @@ async function initDb() {
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      deposited_at TIMESTAMPTZ
+      deposited_at TIMESTAMPTZ,
+      removed_at TIMESTAMPTZ
     );
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_deposits_customer_status
     ON deposits (customer_id, status);
+  `);
+  // Migration: older deployments created this table before removed_at existed.
+  await pool.query(`
+    ALTER TABLE deposits ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;
   `);
   console.log('DB ready: deposits table ok');
 }
