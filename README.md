@@ -63,3 +63,9 @@ a real limit of the photo itself, not something the algorithm can reason
 around. Tap **Edit** on any pending ticket to fix a misread character in
 seconds. Flatter, well-lit, uncluttered photos of just the receipt still
 give the most reliable reads.
+
+If a photo is too unclear to read anything at all, it still gets added to
+Pending (rather than being thrown away) with blank fields and an orange
+**Needs review** stamp instead of the usual Pending one -- tap **Edit** to
+fill in the Customer ID and Code by hand from the same photo. Nothing is
+ever lost to a failed scan; you just may need to type it in yourself.
