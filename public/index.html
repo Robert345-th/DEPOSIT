@@ -2,52 +2,213 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Deposit OCR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deposit Box</title>
+<meta name="theme-color" content="#201d18">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 16px; background: #f4f4f4; }
-  h1 { font-size: 20px; }
-  .dropbox { border: 2px dashed #888; border-radius: 8px; padding: 30px; text-align: center; background: #fff; cursor: pointer; }
-  .dropbox.drag { background: #eef; border-color: #33f; }
-  .status { margin-top: 12px; font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
-  th, td { border: 1px solid #ddd; padding: 6px 8px; font-size: 13px; text-align: left; }
-  h2 { font-size: 16px; margin-top: 30px; }
-  .err { color: #b00; }
-  .ok { color: #070; }
+  :root {
+    --ink: #201d18;
+    --ink-soft: #2b2721;
+    --paper: #f3ece0;
+    --paper-dim: #e6dcc6;
+    --rule: #cbbfa0;
+    --pending: #9c6b12;
+    --claimed: #2f3a5c;
+    --danger: #7a2e2e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    padding-bottom: 60px;
+  }
+  header {
+    padding: 28px 20px 18px;
+    border-bottom: 1px dashed var(--rule);
+  }
+  header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: 0.14em;
+    margin: 0;
+    text-transform: uppercase;
+  }
+  header p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #b8ae9a;
+  }
+  main { padding: 20px; max-width: 560px; margin: 0 auto; }
+
+  .dropzone {
+    background: var(--paper);
+    color: var(--ink);
+    border: 2px dashed #9a8c68;
+    border-radius: 10px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    box-shadow: 0 8px 0 -2px rgba(0,0,0,0.25);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .dropzone.drag { transform: translateY(2px); box-shadow: 0 4px 0 -2px rgba(0,0,0,0.25); background: #ece2cc; }
+  .dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 4px; }
+
+  .status { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; min-height: 18px; }
+  .status.ok { color: #d7c88e; }
+  .status.err { color: #e39a9a; }
+  .status.busy { color: #b8ae9a; }
+
+  section { margin-top: 34px; }
+  section > h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #b8ae9a;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section > h2::after { content: ''; flex: 1; border-top: 1px dashed var(--rule); }
+
+  .empty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    color: #7d745f;
+    padding: 14px 2px;
+  }
+
+  .ticket {
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 3px 0 -1px rgba(0,0,0,0.25);
+  }
+  .ticket::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: repeating-linear-gradient(180deg, var(--rule) 0 4px, transparent 4px 8px);
+  }
+  .ticket-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .ticket-data { font-family: 'JetBrains Mono', monospace; }
+  .ticket-data .id { font-size: 11px; color: #7d745f; letter-spacing: 0.05em; }
+  .ticket-data .code { font-size: 19px; font-weight: 800; letter-spacing: 0.04em; margin-top: 2px; }
+  .ticket-data .time { font-size: 10.5px; color: #948a72; margin-top: 6px; }
+
+  .stamp {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border: 2px solid currentColor;
+    border-radius: 4px;
+    transform: rotate(-4deg);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .stamp.pending { color: var(--pending); }
+  .stamp.claimed { color: var(--claimed); }
+
+  .ticket-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .ticket-actions button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    background: transparent;
+    border: 1px solid #b8ac8c;
+    color: #55503f;
+    padding: 6px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .ticket-actions button.danger { border-color: var(--danger); color: var(--danger); }
+
+  .edit-form { margin-top: 10px; display: none; gap: 8px; flex-direction: column; }
+  .edit-form.open { display: flex; }
+  .edit-form label { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #7d745f; }
+  .edit-form input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    padding: 7px 9px;
+    border: 1px solid #b8ac8c;
+    border-radius: 5px;
+    background: #fffdf7;
+  }
+  .edit-form .save-row { display: flex; gap: 8px; margin-top: 2px; }
+  .edit-form .save-row button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    padding: 7px 12px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+  }
+  .edit-form .save { background: var(--ink); color: var(--paper); }
+  .edit-form .cancel { background: transparent; border: 1px solid #b8ac8c; color: #55503f; }
+
+  input[type=file] { display: none; }
 </style>
 </head>
 <body>
 
-<h1>Deposit Box &mdash; drop a receipt photo</h1>
-<div class="dropbox" id="dropbox">
-  <p>Click or drag a receipt photo here</p>
-  <input type="file" id="fileInput" accept="image/*" style="display:none">
-</div>
-<div class="status" id="status"></div>
+<header>
+  <h1>Deposit Box</h1>
+  <p>Drop a receipt photo to add it to the queue</p>
+</header>
 
-<h2>Pending (Deposit box)</h2>
-<table id="pendingTable">
-  <thead><tr><th>ID</th><th>Customer ID</th><th>Code</th><th>Added</th></tr></thead>
-  <tbody></tbody>
-</table>
+<main>
+  <div class="dropzone" id="dropzone">
+    <span class="big">＋ Add receipt</span>
+    Click or drag a photo here
+  </div>
+  <input type="file" id="fileInput" accept="image/*" capture="environment">
+  <div class="status" id="status"></div>
 
-<h2>Deposited</h2>
-<table id="depositedTable">
-  <thead><tr><th>ID</th><th>Customer ID</th><th>Code</th><th>Claimed</th></tr></thead>
-  <tbody></tbody>
-</table>
+  <section>
+    <h2>Pending</h2>
+    <div id="pendingList"></div>
+  </section>
+
+  <section>
+    <h2>Claimed</h2>
+    <div id="claimedList"></div>
+  </section>
+</main>
 
 <script>
-const dropbox = document.getElementById('dropbox');
+const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const statusEl = document.getElementById('status');
 
-dropbox.addEventListener('click', () => fileInput.click());
-dropbox.addEventListener('dragover', (e) => { e.preventDefault(); dropbox.classList.add('drag'); });
-dropbox.addEventListener('dragleave', () => dropbox.classList.remove('drag'));
-dropbox.addEventListener('drop', (e) => {
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', (e) => {
   e.preventDefault();
-  dropbox.classList.remove('drag');
+  dropzone.classList.remove('drag');
   if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener('change', () => {
@@ -55,45 +216,121 @@ fileInput.addEventListener('change', () => {
 });
 
 async function uploadFile(file) {
-  statusEl.textContent = 'Scanning...';
-  statusEl.className = 'status';
+  setStatus('Scanning…', 'busy');
   const form = new FormData();
   form.append('receipt', file);
   try {
     const res = await fetch('/deposit/scan', { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) {
-      statusEl.textContent = 'Error: ' + (data.error || 'scan failed') +
-        (data.customer_id || data.code ? ` (got ID: ${data.customer_id}, Code: ${data.code})` : '');
-      statusEl.className = 'status err';
+      setStatus(
+        'Could not read this receipt' + (data.customer_id || data.code ? ` (got ID: ${data.customer_id ?? '—'}, Code: ${data.code ?? '—'})` : '') + '. Try a clearer photo.',
+        'err'
+      );
     } else {
-      statusEl.textContent = `Saved: Customer ID ${data.customer_id}, Code ${data.code}`;
-      statusEl.className = 'status ok';
+      setStatus(`Added: ID ${data.customer_id}, Code ${data.code}`, 'ok');
       refresh();
     }
   } catch (err) {
-    statusEl.textContent = 'Upload failed: ' + err.message;
-    statusEl.className = 'status err';
+    setStatus('Upload failed: ' + err.message, 'err');
   }
+  fileInput.value = '';
+}
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + cls;
+}
+
+function fmtTime(iso) {
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function pendingTicketHtml(r) {
+  return `
+    <div class="ticket" data-id="${r.id}">
+      <div class="ticket-row">
+        <div class="ticket-data">
+          <div class="id">ID ${r.customer_id}</div>
+          <div class="code">${r.code}</div>
+          <div class="time">${fmtTime(r.created_at)}</div>
+        </div>
+        <div class="stamp pending">Pending</div>
+      </div>
+      <div class="ticket-actions">
+        <button onclick="toggleEdit(${r.id})">Edit</button>
+        <button class="danger" onclick="removeTicket(${r.id})">Remove</button>
+      </div>
+      <div class="edit-form" id="edit-${r.id}">
+        <label>Customer ID</label>
+        <input type="text" id="edit-id-${r.id}" value="${r.customer_id}">
+        <label>Code</label>
+        <input type="text" id="edit-code-${r.id}" value="${r.code}">
+        <div class="save-row">
+          <button class="save" onclick="saveEdit(${r.id})">Save</button>
+          <button class="cancel" onclick="toggleEdit(${r.id})">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function claimedTicketHtml(r) {
+  return `
+    <div class="ticket" data-id="${r.id}">
+      <div class="ticket-row">
+        <div class="ticket-data">
+          <div class="id">ID ${r.customer_id}</div>
+          <div class="code">${r.code}</div>
+          <div class="time">${fmtTime(r.deposited_at)}</div>
+        </div>
+        <div class="stamp claimed">Claimed</div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleEdit(id) {
+  document.getElementById('edit-' + id).classList.toggle('open');
+}
+
+async function saveEdit(id) {
+  const customer_id = document.getElementById('edit-id-' + id).value.trim();
+  const code = document.getElementById('edit-code-' + id).value.trim();
+  await fetch('/deposit/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customer_id, code })
+  });
+  refresh();
+}
+
+async function removeTicket(id) {
+  await fetch('/deposit/' + id, { method: 'DELETE' });
+  refresh();
 }
 
 async function refresh() {
   const pending = await (await fetch('/deposit/pending')).json();
-  const deposited = await (await fetch('/deposit/deposited')).json();
+  const claimed = await (await fetch('/deposit/deposited')).json();
 
-  const pBody = document.querySelector('#pendingTable tbody');
-  pBody.innerHTML = pending.map(r =>
-    `<tr><td>${r.id}</td><td>${r.customer_id}</td><td>${r.code}</td><td>${new Date(r.created_at).toLocaleString()}</td></tr>`
-  ).join('');
+  document.getElementById('pendingList').innerHTML = pending.length
+    ? pending.map(pendingTicketHtml).join('')
+    : '<div class="empty">No pending receipts. Add one above.</div>';
 
-  const dBody = document.querySelector('#depositedTable tbody');
-  dBody.innerHTML = deposited.map(r =>
-    `<tr><td>${r.id}</td><td>${r.customer_id}</td><td>${r.code}</td><td>${new Date(r.deposited_at).toLocaleString()}</td></tr>`
-  ).join('');
+  document.getElementById('claimedList').innerHTML = claimed.length
+    ? claimed.map(claimedTicketHtml).join('')
+    : '<div class="empty">Nothing claimed yet.</div>';
 }
 
 refresh();
 setInterval(refresh, 5000);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
