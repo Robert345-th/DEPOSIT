@@ -16,8 +16,8 @@ async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS deposits (
       id SERIAL PRIMARY KEY,
-      customer_id TEXT NOT NULL,
-      code TEXT NOT NULL,
+      customer_id TEXT,
+      code TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -29,10 +29,12 @@ async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_deposits_customer_status
     ON deposits (customer_id, status);
   `);
-  // Migration: older deployments created this table before removed_at existed.
-  await pool.query(`
-    ALTER TABLE deposits ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;
-  `);
+  // Migrations for older deployments:
+  await pool.query(`ALTER TABLE deposits ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;`);
+  // A scan that fails to read anything still gets saved (for manual entry),
+  // so these can no longer be NOT NULL on tables created before this change.
+  await pool.query(`ALTER TABLE deposits ALTER COLUMN customer_id DROP NOT NULL;`);
+  await pool.query(`ALTER TABLE deposits ALTER COLUMN code DROP NOT NULL;`);
   console.log('DB ready: deposits table ok');
 }
 
