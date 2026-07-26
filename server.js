@@ -8,7 +8,9 @@
 //      with the ID it found on the page. If a pending match exists, the
 //      code is returned ONCE and the row flips to status='deposited'
 //      (removed from the Deposit box, moved into the Deposited box).
-//   3. GET  /deposit/pending / /deposit/deposited -> list views for the UI.
+//   3. GET  /deposit/pending / /deposit/deposited / /deposit/bin -> list views.
+//   4. DELETE /deposit/:id moves a pending entry into the Bin (soft delete).
+//      From the Bin it can be restored to Pending or deleted permanently.
 
 const express = require('express');
 const multer = require('multer');
@@ -118,6 +120,14 @@ app.get('/deposit/deposited', async (req, res) => {
   res.json(result.rows);
 });
 
+app.get('/deposit/bin', async (req, res) => {
+  const result = await pool.query(
+    `SELECT id, customer_id, code, removed_at FROM deposits
+     WHERE status = 'removed' ORDER BY removed_at DESC LIMIT 100`
+  );
+  res.json(result.rows);
+});
+
 // --- Manual correction, in case OCR misreads a character ---
 app.patch('/deposit/:id', async (req, res) => {
   const { customer_id, code } = req.body;
@@ -135,9 +145,37 @@ app.patch('/deposit/:id', async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// --- Remove a bad scan from the pending box ---
+// --- Move a bad scan from Pending into the Bin (soft delete, recoverable) ---
 app.delete('/deposit/:id', async (req, res) => {
-  await pool.query(`DELETE FROM deposits WHERE id = $1 AND status = 'pending'`, [req.params.id]);
+  const result = await pool.query(
+    `UPDATE deposits SET status = 'removed', removed_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING id`,
+    [req.params.id]
+  );
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Not found or not pending' });
+  }
+  res.json({ moved_to_bin: true });
+});
+
+// --- Put a binned entry back into Pending ---
+app.post('/deposit/:id/restore', async (req, res) => {
+  const result = await pool.query(
+    `UPDATE deposits SET status = 'pending', removed_at = NULL
+     WHERE id = $1 AND status = 'removed'
+     RETURNING id, customer_id, code, status`,
+    [req.params.id]
+  );
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Not found or not in bin' });
+  }
+  res.json(result.rows[0]);
+});
+
+// --- Permanently delete something already in the Bin ---
+app.delete('/deposit/:id/permanent', async (req, res) => {
+  await pool.query(`DELETE FROM deposits WHERE id = $1 AND status = 'removed'`, [req.params.id]);
   res.json({ deleted: true });
 });
 
