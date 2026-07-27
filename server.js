@@ -32,19 +32,20 @@ app.post('/deposit/scan', upload.single('receipt'), async (req, res) => {
       return res.status(400).json({ error: 'No image uploaded (field name: receipt)' });
     }
 
-    const { customer_id, code, raw_text } = await extractFromImage(req.file.buffer);
+    const { customer_id, code, code_confident, raw_text } = await extractFromImage(req.file.buffer);
 
-    // Even if OCR couldn't read one or both fields, save it as pending so
-    // the photo isn't lost -- fill in the blanks with Edit instead of
-    // having to retake the photo from scratch.
+    // Flagged for review if a field is missing OR the code was read but
+    // the three cross-check attempts didn't agree on it.
+    const needsReview = !customer_id || !code || !code_confident;
+
     const result = await pool.query(
-      `INSERT INTO deposits (customer_id, code, status, raw_text)
-       VALUES ($1, $2, 'pending', $3)
-       RETURNING id, customer_id, code, status, created_at`,
-      [customer_id, code, raw_text]
+      `INSERT INTO deposits (customer_id, code, status, raw_text, needs_review)
+       VALUES ($1, $2, 'pending', $3, $4)
+       RETURNING id, customer_id, code, status, created_at, needs_review`,
+      [customer_id, code, raw_text, needsReview]
     );
 
-    res.json({ ...result.rows[0], needs_review: !customer_id || !code });
+    res.json(result.rows[0]);
   } catch (err) {
     console.error('scan error:', err);
     res.status(500).json({ error: 'Scan failed' });
@@ -100,7 +101,7 @@ app.get('/deposit/lookup', async (req, res) => {
 // --- List views for the UI boxes ---
 app.get('/deposit/pending', async (req, res) => {
   const result = await pool.query(
-    `SELECT id, customer_id, code, created_at FROM deposits
+    `SELECT id, customer_id, code, created_at, needs_review FROM deposits
      WHERE status = 'pending' ORDER BY created_at DESC LIMIT 100`
   );
   res.json(result.rows);
@@ -128,9 +129,10 @@ app.patch('/deposit/:id', async (req, res) => {
   const result = await pool.query(
     `UPDATE deposits SET
        customer_id = COALESCE($1, customer_id),
-       code = COALESCE($2, code)
+       code = COALESCE($2, code),
+       needs_review = false
      WHERE id = $3 AND status = 'pending'
-     RETURNING id, customer_id, code, status`,
+     RETURNING id, customer_id, code, status, needs_review`,
     [customer_id || null, code ? code.toUpperCase() : null, req.params.id]
   );
   if (result.rows.length === 0) {
