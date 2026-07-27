@@ -55,14 +55,25 @@ by *position* (the value sitting right below the Customer ID -- not by
 trying to read the word "Code" itself, since that label is often garbled
 too) and re-reads just that small region zoomed in.
 
-The Code crop is actually read **three times**, each with slightly
-different cropping/settings. If a second attempt agrees exactly with the
-first, the result is trusted and shown as a normal **Pending** ticket. If
-all three disagree, the best single guess is still filled in -- but the
-ticket is flagged **Needs review** instead, because the disagreement
-itself is a signal that this particular read is uncertain, even though
-something was read. That flag clears automatically once you open **Edit**
-and save, since a human has now confirmed it.
+The Code crop is actually read **five times**: three variants of crop
+padding / page segmentation, plus two black-and-white threshold levels
+(binarization sometimes clears up a character a plain grayscale read gets
+wrong, and vice versa). Rather than requiring the whole word to match
+across attempts, the result is built **character by character** -- a
+position is only trusted if at least two of the five attempts agree on
+that specific character. If even one position never gets two votes, the
+whole code is filled in as a best guess but flagged **Needs review**. That
+flag clears automatically once you open **Edit** and save, since a human
+has now confirmed it.
+
+Being straight about the real limit here: if *every* attempt independently
+misreads the same character the same way (e.g. a particular `Q` that
+genuinely renders closer to an `O` at this photo's resolution), voting
+can't catch it -- there's no disagreement to detect, so it can come back
+marked confident and still be wrong. Fixing that would need a fundamentally
+different, more heavily trained OCR model (i.e. a paid cloud API), which
+this project intentionally avoids. This five-attempt voting approach is
+close to the practical ceiling of what's achievable for free.
 
 On a blurry or poorly-lit photo, even the Customer ID digits can come out
 wrong -- that's a real limit of the photo itself, not something the
