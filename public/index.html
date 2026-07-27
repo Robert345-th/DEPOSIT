@@ -80,6 +80,41 @@
   }
   #cameraBtn { background: var(--pending); color: var(--ink); }
   #galleryBtn { background: transparent; border: 1.5px solid var(--pending); color: var(--pending); }
+  #manualBtn { background: transparent; border: 1.5px dashed #9a8c68; color: #6b6250; }
+
+  .manual-form {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+    text-align: left;
+  }
+  .manual-form.open { display: flex; }
+  .manual-form label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: #7d745f;
+  }
+  .manual-form input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    padding: 10px 11px;
+    border: 1px solid #b8ac8c;
+    border-radius: 6px;
+    background: #fffdf7;
+    color: var(--ink);
+  }
+  .manual-form .save-row { display: flex; gap: 8px; margin-top: 2px; }
+  .manual-form .save-row button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 10px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .manual-form .save { background: var(--pending); color: var(--ink); border: none; }
+  .manual-form .cancel { background: transparent; border: 1px solid #b8ac8c; color: #55503f; }
 
   .status { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; min-height: 18px; }
   .status.ok { color: #f0a662; }
@@ -206,6 +241,17 @@
     <div class="upload-btns">
       <button type="button" id="cameraBtn">📷 Take photo</button>
       <button type="button" id="galleryBtn">🖼 Choose from gallery</button>
+      <button type="button" id="manualBtn">✏️ Enter manually</button>
+    </div>
+    <div class="manual-form" id="manualForm">
+      <label>Customer ID</label>
+      <input type="text" id="manualIdInput" inputmode="numeric" placeholder="e.g. 1023779">
+      <label>Code</label>
+      <input type="text" id="manualCodeInput" placeholder="e.g. EB8T6">
+      <div class="save-row">
+        <button type="button" class="save" id="manualSaveBtn">Add</button>
+        <button type="button" class="cancel" id="manualCancelBtn">Cancel</button>
+      </div>
     </div>
   </div>
   <input type="file" id="cameraInput" accept="image/*" capture="environment">
@@ -232,12 +278,56 @@
 const dropzone = document.getElementById('dropzone');
 const cameraBtn = document.getElementById('cameraBtn');
 const galleryBtn = document.getElementById('galleryBtn');
+const manualBtn = document.getElementById('manualBtn');
+const manualForm = document.getElementById('manualForm');
+const manualIdInput = document.getElementById('manualIdInput');
+const manualCodeInput = document.getElementById('manualCodeInput');
+const manualSaveBtn = document.getElementById('manualSaveBtn');
+const manualCancelBtn = document.getElementById('manualCancelBtn');
 const cameraInput = document.getElementById('cameraInput');
 const galleryInput = document.getElementById('galleryInput');
 const statusEl = document.getElementById('status');
 
 cameraBtn.addEventListener('click', () => cameraInput.click());
 galleryBtn.addEventListener('click', () => galleryInput.click());
+
+manualBtn.addEventListener('click', () => {
+  manualForm.classList.add('open');
+  manualIdInput.focus();
+});
+manualCancelBtn.addEventListener('click', () => {
+  manualForm.classList.remove('open');
+  manualIdInput.value = '';
+  manualCodeInput.value = '';
+});
+manualSaveBtn.addEventListener('click', async () => {
+  const customer_id = manualIdInput.value.trim();
+  const code = manualCodeInput.value.trim();
+  if (!customer_id || !code) {
+    setStatus('Enter both Customer ID and Code.', 'err');
+    return;
+  }
+  setStatus('Adding…', 'busy');
+  try {
+    const res = await fetch('/deposit/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer_id, code })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setStatus('Could not add: ' + (data.error || 'unknown error'), 'err');
+    } else {
+      setStatus(`Added: ID ${data.customer_id}, Code ${data.code}`, 'ok');
+      manualIdInput.value = '';
+      manualCodeInput.value = '';
+      manualForm.classList.remove('open');
+      refresh();
+    }
+  } catch (err) {
+    setStatus('Could not add: ' + err.message, 'err');
+  }
+});
 
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
