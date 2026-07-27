@@ -31,6 +31,7 @@ the Deposited box, so it can never be reused.
 | Method | Path                          | What it does |
 |--------|-------------------------------|---------------|
 | POST   | `/deposit/scan`               | Upload a receipt photo (`multipart/form-data`, field `receipt`) → OCR → saves as pending |
+| POST   | `/deposit/manual`              | Add an entry by typing Customer ID + Code directly, no OCR -- trusted immediately |
 | GET    | `/deposit/lookup?customer_id=X` | Returns the code for that ID once, marks it deposited |
 | GET    | `/deposit/pending`             | List pending (Deposit box) entries |
 | GET    | `/deposit/deposited`           | List deposited entries |
