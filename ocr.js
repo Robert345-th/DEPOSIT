@@ -2,16 +2,19 @@
 // Runs OCR on a receipt photo and pulls out ONLY Customer ID and Code.
 // Everything else on the slip (terminal, branch, amount, etc.) is ignored.
 //
-// Two passes:
+// Passes:
 //   1. Whole-photo OCR gets the Customer ID reliably, and a rough guess at
 //      the Code via regex.
 //   2. The Code field is small and easy to misread in full-page context, so
 //      we locate it by POSITION (the value sitting right below the Customer
 //      ID value, not by trying to read the word "Code" itself -- that label
-//      is often garbled too) and re-OCR just that tiny region, zoomed in,
-//      as a single word. This consistently produces a correctly-LENGTH
-//      result even when 1-2 characters are still ambiguous (e.g. 8 vs B),
-//      which is much faster to eyeball-correct than a garbled guess.
+//      is often garbled too), crop just that tiny region, and re-OCR it
+//      zoomed in, three times with slightly different crop padding / page
+//      segmentation settings. If two of the three attempts agree exactly,
+//      the result is trusted as confident. If all three disagree, the best
+//      single attempt is still used as a starting guess, but the entry is
+//      flagged "needs review" -- the disagreement itself is the signal that
+//      this particular read is uncertain, even when something was read.
 
 const Tesseract = require('tesseract.js');
 const { Jimp } = require('jimp');
@@ -26,6 +29,15 @@ const CODE_PATTERN = /\bCode\s*[^0-9A-Za-z]{0,3}\s*([A-Z0-9]{4,10})\b/i;
 const FULL_PAGE_WHITELIST =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:.- ';
 const ALNUM_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+// Three independent settings to re-read the same tiny crop with. Testing
+// against real receipts showed tighter padding + single-word mode performs
+// best on average, so it's listed first and used as the primary guess.
+const CODE_READ_VARIANTS = [
+  { pad: 15, psm: () => Tesseract.PSM.SINGLE_WORD },
+  { pad: 25, psm: () => Tesseract.PSM.SINGLE_WORD },
+  { pad: 20, psm: () => Tesseract.PSM.SINGLE_LINE }
+];
 
 let workerPromise = null;
 
@@ -43,7 +55,7 @@ function getWorker() {
 }
 
 // The worker is a shared singleton, and its parameters (whitelist, PSM) get
-// changed between the two passes -- so only one scan runs at a time.
+// changed between passes -- so only one scan runs at a time.
 let queue = Promise.resolve();
 function withLock(fn) {
   const result = queue.then(fn, fn);
@@ -75,8 +87,7 @@ function findCodeWordCandidate(words) {
   return below[0] || null;
 }
 
-async function zoomedCodeRead(worker, image, wordBbox) {
-  const pad = 20;
+async function readCropVariant(worker, image, wordBbox, pad, psm) {
   const { x0, y0, x1, y1 } = wordBbox;
   const cropX = Math.max(0, x0 - pad);
   const cropY = Math.max(0, y0 - pad);
@@ -87,12 +98,28 @@ async function zoomedCodeRead(worker, image, wordBbox) {
   crop.resize({ w: cropW * 4 });
 
   await worker.setParameters({
-    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_WORD,
+    tessedit_pageseg_mode: psm,
     tessedit_char_whitelist: ALNUM_WHITELIST
   });
   const cropBuf = await crop.getBuffer('image/png');
   const { data } = await worker.recognize(cropBuf);
   return data.text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
+// Runs three re-reads of the Code crop. Returns the primary (best-performing
+// variant's) guess, plus whether a second attempt confirmed it exactly.
+async function zoomedCodeReadWithConfidence(worker, image, wordBbox) {
+  const attempts = [];
+  for (const variant of CODE_READ_VARIANTS) {
+    const result = await readCropVariant(worker, image, wordBbox, variant.pad, variant.psm());
+    if (result.length >= 4 && result.length <= 10) attempts.push(result);
+  }
+
+  if (attempts.length === 0) return { code: null, confident: false };
+
+  const primary = attempts[0];
+  const confirmed = attempts.slice(1).some((a) => a === primary);
+  return { code: primary, confident: confirmed };
 }
 
 async function extractFromImage(buffer) {
@@ -118,19 +145,18 @@ async function extractFromImage(buffer) {
     const idWord = (data.words || []).find((w) => /^\d{4,12}$/.test(w.text));
     const customer_id = idWord ? idWord.text : (idMatch ? idMatch[1] : null);
     let code = codeMatch ? codeMatch[1].toUpperCase() : null;
+    let codeConfident = false;
 
-    // Second pass: zoom into just the Code value for a sharper read.
-    // Only trust it if it comes back a plausible length -- otherwise keep
-    // the first pass's guess rather than replace a decent answer with junk.
     const codeWord = findCodeWordCandidate(data.words || []);
     if (codeWord) {
-      const zoomed = await zoomedCodeRead(worker, image, codeWord.bbox);
-      if (zoomed.length >= 4 && zoomed.length <= 10) {
-        code = zoomed;
+      const zoomed = await zoomedCodeReadWithConfidence(worker, image, codeWord.bbox);
+      if (zoomed.code) {
+        code = zoomed.code;
+        codeConfident = zoomed.confident;
       }
     }
 
-    return { customer_id, code, raw_text: text };
+    return { customer_id, code, code_confident: codeConfident, raw_text: text };
   });
 }
 
