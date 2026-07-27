@@ -20,6 +20,7 @@ async function initDb() {
       code TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       raw_text TEXT,
+      needs_review BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       deposited_at TIMESTAMPTZ,
       removed_at TIMESTAMPTZ
@@ -35,6 +36,7 @@ async function initDb() {
   // so these can no longer be NOT NULL on tables created before this change.
   await pool.query(`ALTER TABLE deposits ALTER COLUMN customer_id DROP NOT NULL;`);
   await pool.query(`ALTER TABLE deposits ALTER COLUMN code DROP NOT NULL;`);
+  await pool.query(`ALTER TABLE deposits ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT false;`);
   console.log('DB ready: deposits table ok');
 }
 
