@@ -52,6 +52,26 @@ app.post('/deposit/scan', upload.single('receipt'), async (req, res) => {
   }
 });
 
+// --- Add an entry by typing it in directly, no OCR involved. Trusted
+// immediately since a human read it off the paper themselves. ---
+app.post('/deposit/manual', async (req, res) => {
+  const customer_id = (req.body.customer_id || '').trim();
+  const code = (req.body.code || '').trim().toUpperCase();
+
+  if (!customer_id || !code) {
+    return res.status(400).json({ error: 'Customer ID and Code are both required' });
+  }
+
+  const result = await pool.query(
+    `INSERT INTO deposits (customer_id, code, status, needs_review)
+     VALUES ($1, $2, 'pending', false)
+     RETURNING id, customer_id, code, status, created_at, needs_review`,
+    [customer_id, code]
+  );
+
+  res.json(result.rows[0]);
+});
+
 // --- Tampermonkey calls this with the Customer ID scraped from the page ---
 app.get('/deposit/lookup', async (req, res) => {
   const { customer_id } = req.query;
