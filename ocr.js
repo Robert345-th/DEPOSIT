@@ -119,13 +119,34 @@ async function readCropVariant(worker, image, wordBbox, variant) {
   return data.text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
+// Character groups that are commonly confused with each other on small,
+// low-resolution, or faded print -- even by a human eye, let alone OCR.
+// If the final code contains any of these characters, unanimous agreement
+// across all 5 read attempts still doesn't prove correctness, because every
+// attempt can independently make the exact same misread of the same glyph
+// shape (this is the failure mode voting alone can't catch).
+//
+// Kept deliberately narrow to pairs actually observed failing on real
+// receipts (O/Q, 5/S, 8/B, 6/G) -- a broader "everything that could ever be
+// confused" list would flag nearly every code and make the flag useless.
+const CONFUSABLE_GROUPS = [
+  ['0', 'O', 'Q'],
+  ['5', 'S'],
+  ['8', 'B'],
+  ['6', 'G'],
+];
+const CONFUSABLE_CHARS = new Set(CONFUSABLE_GROUPS.flat());
+
 // Builds a composite code by voting character-by-character across whichever
 // attempts share the most common length. A position needs at least 2 votes
 // to be trusted; if even one position never gets 2 votes, the whole code
 // is marked not confident (but the best-guess composite is still returned).
+// Separately, if any character in the result belongs to a commonly-confused
+// group, confidence is capped regardless of vote agreement -- see comment
+// on CONFUSABLE_GROUPS above.
 function buildConsensus(attempts) {
   const valid = attempts.filter((s) => s.length >= 4 && s.length <= 10);
-  if (valid.length === 0) return { code: null, confident: false };
+  if (valid.length === 0) return { code: null, confident: false, ambiguousPositions: [] };
 
   const lengthCounts = {};
   valid.forEach((s) => { lengthCounts[s.length] = (lengthCounts[s.length] || 0) + 1; });
@@ -136,15 +157,20 @@ function buildConsensus(attempts) {
 
   let composite = '';
   let confident = group.length >= 2;
+  const ambiguousPositions = [];
   for (let i = 0; i < dominantLength; i++) {
     const counts = {};
     group.forEach((s) => { counts[s[i]] = (counts[s[i]] || 0) + 1; });
     const [bestChar, bestCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
     composite += bestChar;
     if (bestCount < 2) confident = false;
+    if (CONFUSABLE_CHARS.has(bestChar)) {
+      confident = false;
+      ambiguousPositions.push(i);
+    }
   }
 
-  return { code: composite, confident };
+  return { code: composite, confident, ambiguousPositions };
 }
 
 async function zoomedCodeReadWithConfidence(worker, image, wordBbox) {
