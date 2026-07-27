@@ -71,10 +71,20 @@ Being straight about the real limit here: if *every* attempt independently
 misreads the same character the same way (e.g. a particular `Q` that
 genuinely renders closer to an `O` at this photo's resolution), voting
 can't catch it -- there's no disagreement to detect, so it can come back
-marked confident and still be wrong. Fixing that would need a fundamentally
-different, more heavily trained OCR model (i.e. a paid cloud API), which
-this project intentionally avoids. This five-attempt voting approach is
-close to the practical ceiling of what's achievable for free.
+marked confident and still be wrong.
+
+To close that gap without paying for a better model, a short list of
+known-confusable character pairs (`O`/`Q`/`0`, `5`/`S`, `8`/`B`, `6`/`G`)
+forces **Needs review** whenever the code contains one of them, even if
+all five attempts agreed. Agreement on an inherently ambiguous glyph
+doesn't prove it's correct -- so these always get a human's eyes instead
+of a false "confident" stamp. The tradeoff: codes containing these
+characters will show as Needs review more often than before, even when
+they happen to be right. That's intentional -- the app would rather ask
+you to glance at a correct read than confidently hand you a wrong one.
+This list is deliberately narrow (only pairs actually observed failing on
+real receipts); a broader "everything that could ever be confused" list
+would flag nearly every code and make the flag meaningless.
 
 On a blurry or poorly-lit photo, even the Customer ID digits can come out
 wrong -- that's a real limit of the photo itself, not something the
