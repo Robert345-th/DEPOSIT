@@ -9,12 +9,22 @@
 //      we locate it by POSITION (the value sitting right below the Customer
 //      ID value, not by trying to read the word "Code" itself -- that label
 //      is often garbled too), crop just that tiny region, and re-OCR it
-//      zoomed in, three times with slightly different crop padding / page
-//      segmentation settings. If two of the three attempts agree exactly,
-//      the result is trusted as confident. If all three disagree, the best
-//      single attempt is still used as a starting guess, but the entry is
-//      flagged "needs review" -- the disagreement itself is the signal that
-//      this particular read is uncertain, even when something was read.
+//      FIVE times: three variants of crop padding / page segmentation, plus
+//      two black-and-white threshold levels (binarization sometimes clears
+//      up a character a grayscale read gets wrong, and vice versa).
+//
+//      Rather than requiring the whole string to match across attempts, we
+//      vote CHARACTER BY CHARACTER. A position is only trusted if at least
+//      two attempts agree on that specific character; if every attempt
+//      disagrees at some position, that position (and the whole code) is
+//      flagged "needs review" even though a best-guess is still filled in.
+//
+//      Real limit, and worth being honest about: if every attempt makes
+//      the *same* mistake (e.g. a particular Q reliably renders in a way
+//      that looks like O at this font/resolution), voting won't catch it --
+//      that's a systematic misread, not noise, and no amount of re-reading
+//      the same pixels fixes it. This approach catches inconsistent
+//      mistakes, which is most of them, not consistent ones.
 
 const Tesseract = require('tesseract.js');
 const { Jimp } = require('jimp');
@@ -30,13 +40,15 @@ const FULL_PAGE_WHITELIST =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:.- ';
 const ALNUM_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-// Three independent settings to re-read the same tiny crop with. Testing
-// against real receipts showed tighter padding + single-word mode performs
-// best on average, so it's listed first and used as the primary guess.
+// Five independent re-reads of the same tiny Code crop. `thresh: null` means
+// plain grayscale; otherwise the crop is binarized to pure black/white at
+// that cutoff first.
 const CODE_READ_VARIANTS = [
-  { pad: 15, psm: () => Tesseract.PSM.SINGLE_WORD },
-  { pad: 25, psm: () => Tesseract.PSM.SINGLE_WORD },
-  { pad: 20, psm: () => Tesseract.PSM.SINGLE_LINE }
+  { pad: 15, psm: () => Tesseract.PSM.SINGLE_WORD, thresh: null },
+  { pad: 25, psm: () => Tesseract.PSM.SINGLE_WORD, thresh: null },
+  { pad: 20, psm: () => Tesseract.PSM.SINGLE_LINE, thresh: null },
+  { pad: 15, psm: () => Tesseract.PSM.SINGLE_WORD, thresh: 140 },
+  { pad: 15, psm: () => Tesseract.PSM.SINGLE_WORD, thresh: 170 }
 ];
 
 let workerPromise = null;
@@ -87,18 +99,19 @@ function findCodeWordCandidate(words) {
   return below[0] || null;
 }
 
-async function readCropVariant(worker, image, wordBbox, pad, psm) {
+async function readCropVariant(worker, image, wordBbox, variant) {
   const { x0, y0, x1, y1 } = wordBbox;
-  const cropX = Math.max(0, x0 - pad);
-  const cropY = Math.max(0, y0 - pad);
-  const cropW = Math.min(image.bitmap.width - cropX, (x1 - x0) + pad * 2);
-  const cropH = Math.min(image.bitmap.height - cropY, (y1 - y0) + pad * 2);
+  const cropX = Math.max(0, x0 - variant.pad);
+  const cropY = Math.max(0, y0 - variant.pad);
+  const cropW = Math.min(image.bitmap.width - cropX, (x1 - x0) + variant.pad * 2);
+  const cropH = Math.min(image.bitmap.height - cropY, (y1 - y0) + variant.pad * 2);
 
   const crop = image.clone().crop({ x: cropX, y: cropY, w: cropW, h: cropH });
   crop.resize({ w: cropW * 4 });
+  if (variant.thresh !== null) crop.threshold({ max: variant.thresh });
 
   await worker.setParameters({
-    tessedit_pageseg_mode: psm,
+    tessedit_pageseg_mode: variant.psm(),
     tessedit_char_whitelist: ALNUM_WHITELIST
   });
   const cropBuf = await crop.getBuffer('image/png');
@@ -106,20 +119,40 @@ async function readCropVariant(worker, image, wordBbox, pad, psm) {
   return data.text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 }
 
-// Runs three re-reads of the Code crop. Returns the primary (best-performing
-// variant's) guess, plus whether a second attempt confirmed it exactly.
+// Builds a composite code by voting character-by-character across whichever
+// attempts share the most common length. A position needs at least 2 votes
+// to be trusted; if even one position never gets 2 votes, the whole code
+// is marked not confident (but the best-guess composite is still returned).
+function buildConsensus(attempts) {
+  const valid = attempts.filter((s) => s.length >= 4 && s.length <= 10);
+  if (valid.length === 0) return { code: null, confident: false };
+
+  const lengthCounts = {};
+  valid.forEach((s) => { lengthCounts[s.length] = (lengthCounts[s.length] || 0) + 1; });
+  const dominantLength = Number(
+    Object.entries(lengthCounts).sort((a, b) => b[1] - a[1])[0][0]
+  );
+  const group = valid.filter((s) => s.length === dominantLength);
+
+  let composite = '';
+  let confident = group.length >= 2;
+  for (let i = 0; i < dominantLength; i++) {
+    const counts = {};
+    group.forEach((s) => { counts[s[i]] = (counts[s[i]] || 0) + 1; });
+    const [bestChar, bestCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    composite += bestChar;
+    if (bestCount < 2) confident = false;
+  }
+
+  return { code: composite, confident };
+}
+
 async function zoomedCodeReadWithConfidence(worker, image, wordBbox) {
   const attempts = [];
   for (const variant of CODE_READ_VARIANTS) {
-    const result = await readCropVariant(worker, image, wordBbox, variant.pad, variant.psm());
-    if (result.length >= 4 && result.length <= 10) attempts.push(result);
+    attempts.push(await readCropVariant(worker, image, wordBbox, variant));
   }
-
-  if (attempts.length === 0) return { code: null, confident: false };
-
-  const primary = attempts[0];
-  const confirmed = attempts.slice(1).some((a) => a === primary);
-  return { code: primary, confident: confirmed };
+  return buildConsensus(attempts);
 }
 
 async function extractFromImage(buffer) {
