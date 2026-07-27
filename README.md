@@ -53,19 +53,24 @@ glare/clutter in the frame. The scan does two passes: first it reads the
 whole photo (reliable for the Customer ID), then it locates the Code value
 by *position* (the value sitting right below the Customer ID -- not by
 trying to read the word "Code" itself, since that label is often garbled
-too) and re-reads just that small region zoomed in, as a single word.
+too) and re-reads just that small region zoomed in.
 
-Tested against real receipts: this consistently produces a Code guess of
-the *correct length*, usually off by only one character (typically an
-8-vs-B mix-up) rather than the wrong length entirely. On a blurry or
-poorly-lit photo, even the Customer ID digits can come out wrong -- that's
-a real limit of the photo itself, not something the algorithm can reason
-around. Tap **Edit** on any pending ticket to fix a misread character in
-seconds. Flatter, well-lit, uncluttered photos of just the receipt still
-give the most reliable reads.
+The Code crop is actually read **three times**, each with slightly
+different cropping/settings. If a second attempt agrees exactly with the
+first, the result is trusted and shown as a normal **Pending** ticket. If
+all three disagree, the best single guess is still filled in -- but the
+ticket is flagged **Needs review** instead, because the disagreement
+itself is a signal that this particular read is uncertain, even though
+something was read. That flag clears automatically once you open **Edit**
+and save, since a human has now confirmed it.
+
+On a blurry or poorly-lit photo, even the Customer ID digits can come out
+wrong -- that's a real limit of the photo itself, not something the
+algorithm can reason around. Flatter, well-lit, uncluttered photos of just
+the receipt still give the most reliable reads.
 
 If a photo is too unclear to read anything at all, it still gets added to
-Pending (rather than being thrown away) with blank fields and an orange
-**Needs review** stamp instead of the usual Pending one -- tap **Edit** to
-fill in the Customer ID and Code by hand from the same photo. Nothing is
-ever lost to a failed scan; you just may need to type it in yourself.
+Pending (rather than being thrown away) with blank fields and the same
+**Needs review** stamp -- tap **Edit** to fill in the Customer ID and Code
+by hand from the same photo. Nothing is ever lost to a failed scan; you
+just may need to type it in yourself.
